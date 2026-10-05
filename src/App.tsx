@@ -178,6 +178,7 @@ function PracticeScreen({
   const copy = practiceCopy[practice];
   const complete = status === 'complete';
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundRef = useRef(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeFrame = useRef<number | undefined>(undefined);
   const audioSrc = audioTracks[practice];
@@ -186,7 +187,7 @@ function PracticeScreen({
     const audio = new Audio(audioSrc);
     audio.preload = 'auto';
     audio.loop = true;
-    audio.volume = 0;
+    audio.volume = 0.3;
     audioRef.current = audio;
 
     return () => {
@@ -197,14 +198,19 @@ function PracticeScreen({
     };
   }, [audioSrc]);
 
+  useEffect(() => {
+    soundRef.current = soundEnabled;
+    const audio = audioRef.current;
+    if (audio) audio.muted = !soundEnabled;
+  }, [soundEnabled]);
+
   const stopAudio = () => {
     const audio = audioRef.current;
     if (!audio) return;
     if (fadeFrame.current !== undefined) cancelAnimationFrame(fadeFrame.current);
     audio.pause();
     audio.currentTime = 0;
-    audio.volume = 0;
-    audio.muted = false;
+    audio.volume = 0.3;
   };
 
   const startAudio = () => {
@@ -212,26 +218,10 @@ function PracticeScreen({
     if (!audio) return;
     if (fadeFrame.current !== undefined) cancelAnimationFrame(fadeFrame.current);
     audio.currentTime = 0;
-    audio.volume = 0;
-    audio.muted = !soundEnabled;
-    void audio.play().catch(() => undefined);
-
-    const startedAt = performance.now();
-    const fadeIn = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / 2000);
-      audio.volume = progress * 0.3;
-      if (progress < 1) fadeFrame.current = requestAnimationFrame(fadeIn);
-    };
-    fadeFrame.current = requestAnimationFrame(fadeIn);
+    audio.muted = !soundRef.current;
+    audio.volume = 0.3;
+    audio.play().catch((err) => console.error('[Synbreathe] Audio playback failed:', err));
   };
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return undefined;
-    audio.muted = !soundEnabled;
-    if (soundEnabled && status === 'active' && audio.paused) void audio.play().catch(() => undefined);
-    return undefined;
-  }, [soundEnabled, status]);
 
   useEffect(() => {
     if (status !== 'complete') return undefined;
@@ -242,13 +232,15 @@ function PracticeScreen({
     const initialVolume = audio.volume;
     const fadeOut = (now: number) => {
       const progress = Math.min(1, (now - startedAt) / 2500);
-      audio.volume = initialVolume * (1 - progress);
+      if (audio) audio.volume = initialVolume * (1 - progress);
       if (progress < 1) {
         fadeFrame.current = requestAnimationFrame(fadeOut);
       } else {
-        audio.pause();
-        audio.currentTime = 0;
-        audio.volume = 0;
+        if (audio) {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = 0.3;
+        }
       }
     };
     fadeFrame.current = requestAnimationFrame(fadeOut);
