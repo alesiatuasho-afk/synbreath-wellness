@@ -39,9 +39,9 @@ const energyPhases = [
 ];
 
 const audioTracks: Record<Exclude<Practice, 'home'>, string> = {
-  calmer: '/audio/calmer.mp3',
-  focused: '/audio/focused.mp3',
-  energized: '/audio/energized.mp3',
+  calmer: 'https://raw.githubusercontent.com/alesiatuasho-afk/synbreath-audio/main/calmer.mp3',
+  focused: 'https://raw.githubusercontent.com/alesiatuasho-afk/synbreath-audio/main/focused.mp3',
+  energized: 'https://raw.githubusercontent.com/alesiatuasho-afk/synbreath-audio/main/energized.mp3',
 };
 
 function App() {
