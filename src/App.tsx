@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 
 type Practice = 'home' | 'calmer' | 'focused' | 'energized';
 type PracticeStatus = 'ready' | 'active' | 'complete';
@@ -36,6 +37,12 @@ const energyPhases = [
   { cue: 'Expand', instruction: 'Stretch your arms out wide to the sides. Gently lift your chest and take a full breath.', duration: 10 },
   { cue: 'Stillness', instruction: 'Let your arms rest by your sides. Stand still and notice how your body feels.', duration: 10 },
 ];
+
+const audioTracks: Record<Exclude<Practice, 'home'>, string> = {
+  calmer: '/audio/calmer.mp3',
+  focused: '/audio/focused.mp3',
+  energized: '/audio/energized.mp3',
+};
 
 function App() {
   const [practice, setPractice] = useState<Practice>('home');
@@ -170,25 +177,123 @@ function PracticeScreen({
 }) {
   const copy = practiceCopy[practice];
   const complete = status === 'complete';
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const fadeFrame = useRef<number | undefined>(undefined);
+  const audioSrc = audioTracks[practice];
+
+  useEffect(() => {
+    const audio = new Audio(audioSrc);
+    audio.preload = 'auto';
+    audio.loop = true;
+    audio.volume = 0;
+    audioRef.current = audio;
+
+    return () => {
+      if (fadeFrame.current !== undefined) cancelAnimationFrame(fadeFrame.current);
+      audio.pause();
+      audio.currentTime = 0;
+      audioRef.current = null;
+    };
+  }, [audioSrc]);
+
+  const stopAudio = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (fadeFrame.current !== undefined) cancelAnimationFrame(fadeFrame.current);
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = 0;
+    audio.muted = false;
+  };
+
+  const startAudio = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (fadeFrame.current !== undefined) cancelAnimationFrame(fadeFrame.current);
+    audio.currentTime = 0;
+    audio.volume = 0;
+    audio.muted = !soundEnabled;
+    void audio.play().catch(() => undefined);
+
+    const startedAt = performance.now();
+    const fadeIn = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / 2000);
+      audio.volume = progress * 0.3;
+      if (progress < 1) fadeFrame.current = requestAnimationFrame(fadeIn);
+    };
+    fadeFrame.current = requestAnimationFrame(fadeIn);
+  };
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+    audio.muted = !soundEnabled;
+    if (soundEnabled && status === 'active' && audio.paused) void audio.play().catch(() => undefined);
+    return undefined;
+  }, [soundEnabled, status]);
+
+  useEffect(() => {
+    if (status !== 'complete') return undefined;
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+    if (fadeFrame.current !== undefined) cancelAnimationFrame(fadeFrame.current);
+    const startedAt = performance.now();
+    const initialVolume = audio.volume;
+    const fadeOut = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / 2500);
+      audio.volume = initialVolume * (1 - progress);
+      if (progress < 1) {
+        fadeFrame.current = requestAnimationFrame(fadeOut);
+      } else {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = 0;
+      }
+    };
+    fadeFrame.current = requestAnimationFrame(fadeOut);
+    return () => {
+      if (fadeFrame.current !== undefined) cancelAnimationFrame(fadeFrame.current);
+    };
+  }, [status]);
+
+  const handleStart = () => {
+    startAudio();
+    onStart();
+  };
+
+  const handleReturnHome = () => {
+    stopAudio();
+    onReturnHome();
+  };
 
   return (
     <section className={`practice-screen screen-frame practice-${practice}`}>
-      <button className="back-button" type="button" onClick={onReturnHome} aria-label="Return to home">
+      <button className="back-button" type="button" onClick={handleReturnHome} aria-label="Return to home">
         <span aria-hidden="true">↤</span> Back
+      </button>
+      <button
+        className="sound-button"
+        type="button"
+        onClick={() => setSoundEnabled((enabled) => !enabled)}
+        aria-label={soundEnabled ? 'Turn sound off' : 'Turn sound on'}
+        aria-pressed={soundEnabled}
+      >
+        {soundEnabled ? <Volume2 size={15} strokeWidth={1.5} /> : <VolumeX size={15} strokeWidth={1.5} />}
       </button>
       <div className="practice-content">
         <p className="eyebrow">{copy.label}</p>
         {complete ? (
           <>
             <h1>Notice how you feel now.</h1>
-            <button className="primary-button" type="button" onClick={onReturnHome}>Try another</button>
+            <button className="primary-button" type="button" onClick={handleReturnHome}>Try another</button>
           </>
         ) : practice === 'energized' ? (
-          <EnergizedPractice status={status} elapsed={elapsed} onStart={onStart} />
+          <EnergizedPractice status={status} elapsed={elapsed} onStart={handleStart} />
         ) : practice === 'calmer' ? (
-          <CalmerPractice status={status} elapsed={elapsed} onStart={onStart} />
+          <CalmerPractice status={status} elapsed={elapsed} onStart={handleStart} />
         ) : (
-          <FocusedPractice status={status} elapsed={elapsed} onStart={onStart} />
+          <FocusedPractice status={status} elapsed={elapsed} onStart={handleStart} />
         )}
       </div>
       <p className="practice-footer">Synbreathe · take a small reset</p>

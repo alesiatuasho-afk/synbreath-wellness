@@ -65,6 +65,9 @@ h1 span { display: block; color: #d8c9ac; }
 .back-button { position: absolute; top: clamp(28px, 5vw, 72px); left: clamp(24px, 7vw, 112px); border: 0; padding: 8px 0; background: transparent; color: #a9aa9f; cursor: pointer; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; transition: color .2s ease; }
 .back-button span { margin-right: 7px; color: #c9a66b; font-size: 20px; vertical-align: -2px; }
 .back-button:hover { color: #f4ebd8; }
+.sound-button { position: absolute; top: clamp(28px, 5vw, 72px); right: clamp(24px, 7vw, 112px); display: grid; width: 32px; height: 32px; padding: 0; place-items: center; border: 1px solid rgba(201, 166, 107, .28); border-radius: 50%; background: transparent; color: #c9a66b; cursor: pointer; transition: border-color .2s ease, color .2s ease, transform .2s ease; }
+.sound-button:hover, .sound-button:focus-visible { border-color: rgba(201, 166, 107, .7); color: #f4ebd8; transform: translateY(-1px); }
+.sound-button:focus-visible { outline: 2px solid #c9a66b; outline-offset: 4px; }
 .practice-content { display: flex; width: min(700px, 100%); flex-direction: column; align-items: center; }
 .practice-content .eyebrow { margin-bottom: 21px; }
 .practice-content h1 { font-size: clamp(37px, 5vw, 68px); }
