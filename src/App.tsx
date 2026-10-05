@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 type Practice = 'home' | 'calmer' | 'focused' | 'energized';
 type PracticeStatus = 'ready' | 'active' | 'complete';
+type FeedbackState = 'none' | 'form' | 'submitted';
+
+type FeedbackOutcome = 'calmer' | 'clearer' | 'more_energized' | 'no_real_change';
+
+const feedbackOutcomes: { id: FeedbackOutcome; label: string }[] = [
+  { id: 'calmer', label: 'Calmer' },
+  { id: 'clearer', label: 'Clearer' },
+  { id: 'more_energized', label: 'More energized' },
+  { id: 'no_real_change', label: 'No real change' },
+];
 
 type PracticeCopy = {
   label: string;
@@ -48,17 +59,20 @@ function App() {
   const [practice, setPractice] = useState<Practice>('home');
   const [status, setStatus] = useState<PracticeStatus>('ready');
   const [elapsed, setElapsed] = useState(0);
+  const [feedbackState, setFeedbackState] = useState<FeedbackState>('none');
 
   const beginPractice = (nextPractice: Exclude<Practice, 'home'>) => {
     setPractice(nextPractice);
     setStatus('ready');
     setElapsed(0);
+    setFeedbackState('none');
   };
 
   const returnHome = () => {
     setPractice('home');
     setStatus('ready');
     setElapsed(0);
+    setFeedbackState('none');
   };
 
   useEffect(() => {
@@ -97,7 +111,7 @@ function App() {
       <div className="ambient-glow ambient-glow-two" />
       {practice === 'home' ? (
         <HomeScreen onChoose={beginPractice} />
-      ) : (
+      ) : feedbackState === 'none' ? (
         <PracticeScreen
           practice={practice}
           status={status}
@@ -106,6 +120,24 @@ function App() {
             setStatus('active');
             setElapsed(0);
           }}
+          onReturnHome={returnHome}
+          onComplete={() => setFeedbackState('form')}
+        />
+      ) : (
+        <FeedbackScreen
+          feedbackState={feedbackState}
+          onSubmit={async (outcomes, written) => {
+            const { error } = await supabase.from('practice_feedback').insert({
+              practice,
+              outcomes,
+              feedback: written || null,
+            });
+            if (error) {
+              console.error('[Synbreathe] Feedback save failed:', error);
+            }
+            setFeedbackState('submitted');
+          }}
+          onSkip={returnHome}
           onReturnHome={returnHome}
         />
       )}
@@ -168,12 +200,14 @@ function PracticeScreen({
   elapsed,
   onStart,
   onReturnHome,
+  onComplete,
 }: {
   practice: Exclude<Practice, 'home'>;
   status: PracticeStatus;
   elapsed: number;
   onStart: () => void;
   onReturnHome: () => void;
+  onComplete: () => void;
 }) {
   const copy = practiceCopy[practice];
   const complete = status === 'complete';
@@ -241,6 +275,7 @@ function PracticeScreen({
           audio.currentTime = 0;
           audio.volume = 0.3;
         }
+        onComplete();
       }
     };
     fadeFrame.current = requestAnimationFrame(fadeOut);
@@ -353,6 +388,104 @@ function PracticeVisual({ practice, status, elapsed }: { practice: Exclude<Pract
   }
   if (practice === 'energized') return <div className="energy-complete-mark" aria-hidden="true"><span /><span /></div>;
   return <div className="complete-breath" aria-hidden="true" />;
+}
+
+function FeedbackScreen({
+  feedbackState,
+  onSubmit,
+  onSkip,
+  onReturnHome,
+}: {
+  feedbackState: FeedbackState;
+  onSubmit: (outcomes: string[], written: string) => void;
+  onSkip: () => void;
+  onReturnHome: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<FeedbackOutcome>>(new Set());
+  const [written, setWritten] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const toggleOutcome = (id: FeedbackOutcome) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    await onSubmit(Array.from(selected), written.trim());
+  };
+
+  if (feedbackState === 'submitted') {
+    return (
+      <section className="feedback-screen screen-frame practice-screen">
+        <div className="practice-content feedback-content">
+          <h1 className="feedback-thanks">Thank you.</h1>
+          <p className="instruction">Your feedback helps us make SYNREBREATHE better.</p>
+          <button className="primary-button" type="button" onClick={onReturnHome}>Back to Home</button>
+        </div>
+        <p className="practice-footer">Synbreathe · take a small reset</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="feedback-screen screen-frame practice-screen">
+      <button className="back-button" type="button" onClick={onSkip} aria-label="Return to home">
+        <span aria-hidden="true">↤</span> Back
+      </button>
+      <div className="practice-content feedback-content">
+        <p className="eyebrow">A moment to notice</p>
+        <h1 className="feedback-heading">How do you feel now?</h1>
+        <p className="feedback-question">What changed most?</p>
+        <div className="feedback-options" role="group" aria-label="What changed most">
+          {feedbackOutcomes.map((outcome) => {
+            const isSelected = selected.has(outcome.id);
+            return (
+              <button
+                key={outcome.id}
+                type="button"
+                className={`feedback-option ${isSelected ? 'selected' : ''}`}
+                onClick={() => toggleOutcome(outcome.id)}
+                aria-pressed={isSelected}
+              >
+                {outcome.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="feedback-text-area">
+          <p className="feedback-text-label">Anything you noticed?</p>
+          <p className="feedback-helper">Optional — a few words is enough.</p>
+          <textarea
+            className="feedback-input"
+            value={written}
+            onChange={(e) => setWritten(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder=""
+            aria-label="Anything you noticed?"
+          />
+        </div>
+        <button
+          className="primary-button"
+          type="button"
+          onClick={handleSubmit}
+          disabled={submitting}
+        >
+          {submitting ? 'Submitting...' : 'Submit'}
+        </button>
+        <button type="button" className="feedback-skip" onClick={onSkip}>
+          Skip
+        </button>
+      </div>
+      <p className="practice-footer">Synbreathe · take a small reset</p>
+    </section>
+  );
 }
 
 export default App;
